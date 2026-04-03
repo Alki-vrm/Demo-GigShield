@@ -1,0 +1,140 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /users/{userId}
+    // Document ID: Firebase Auth UID
+    // Fields:
+    //   - uid: string (required) - User's unique ID
+    //   - email: string (required) - User's email
+    //   - phoneNumber: string (required) - Mobile number
+    //   - targetPremium: number (required) - Weekly premium target
+    //   - platform: string (required) - Gig platform
+    //   - companyEmail: string (optional) - Work email
+    //   - dailySalary: number (required) - Daily earnings
+    //   - role: string (optional) - enum ['worker', 'admin']
+    //
+    // Collection: /users/{userId}/policies/{policyId}
+    // Fields:
+    //   - userId: string (required) - Owner's UID
+    //   - status: string (required) - enum ['active', 'expired', 'pending']
+    //   - premiumPaid: number (required) - Amount paid
+    //   - maxPayout: number (required) - Maximum possible payout
+    //   - coverageStart: timestamp (required)
+    //   - coverageEnd: timestamp (required)
+    //   - risks: list (optional) - List of risk types
+    //
+    // Collection: /users/{userId}/claims/{claimId}
+    // Fields:
+    //   - userId: string (required) - Owner's UID
+    //   - policyId: string (required) - Associated policy ID
+    //   - event: string (required) - Event type (e.g., 'heatwave')
+    //   - payoutAmount: number (required)
+    //   - status: string (required) - enum ['initiated', 'completed', 'failed']
+    //   - timestamp: timestamp (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "ganeshnadhgummadidala@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidString(field, min, max) {
+      return request.resource.data[field] is string && 
+             request.resource.data[field].size() >= min && 
+             request.resource.data[field].size() <= max;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'phoneNumber', 'targetPremium', 'platform', 'dailySalary']) &&
+             hasOnlyAllowedFields(['uid', 'email', 'phoneNumber', 'targetPremium', 'platform', 'companyEmail', 'dailySalary', 'role', 'createdAt', 'lastLogin']) &&
+             data.uid == request.auth.uid &&
+             isValidEmail(data.email) &&
+             data.phoneNumber is string && data.phoneNumber.size() >= 10 &&
+             data.targetPremium is number && data.targetPremium >= 10 &&
+             data.platform in ['Zomato', 'Swiggy', 'Zepto', 'Uber', 'Rapido', 'Other'] &&
+             data.dailySalary is number && data.dailySalary >= 0 &&
+             (!('companyEmail' in data) || data.companyEmail == "" || isValidEmail(data.companyEmail)) &&
+             (!('role' in data) || data.role in ['worker', 'admin']);
+    }
+
+    function isValidPolicy(data) {
+      return hasRequiredFields(['userId', 'status', 'premiumPaid', 'maxPayout', 'coverageStart', 'coverageEnd']) &&
+             data.userId == request.auth.uid &&
+             data.status in ['active', 'expired', 'pending'] &&
+             data.premiumPaid is number && data.premiumPaid >= 0 &&
+             data.maxPayout is number && data.maxPayout >= 0 &&
+             data.coverageStart is timestamp &&
+             data.coverageEnd is timestamp;
+    }
+
+    function isValidClaim(data) {
+      return hasRequiredFields(['userId', 'policyId', 'event', 'payoutAmount', 'status', 'timestamp']) &&
+             data.userId == request.auth.uid &&
+             data.status in ['initiated', 'completed', 'failed'] &&
+             data.payoutAmount is number && data.payoutAmount >= 0 &&
+             data.timestamp is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'worker' || isAdmin());
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+
+      match /policies/{policyId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidPolicy(request.resource.data);
+        allow update: if isAdmin(); // Only admins can update policies (e.g., change status)
+      }
+
+      match /claims/{claimId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) && isValidClaim(request.resource.data);
+        allow update: if isAdmin(); // Only admins can update claim status
+      }
+    }
+
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

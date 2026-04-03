@@ -1,0 +1,71 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores gig worker profile and current location data.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" },
+            "address": { "type": "string" }
+          }
+        },
+        "role": { "type": "string", "enum": ["worker", "admin"] }
+      },
+      "required": ["uid", "email"]
+    },
+    "Policy": {
+      "title": "Insurance Policy",
+      "description": "Represents a weekly parametric insurance policy.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "expired", "pending"] },
+        "premiumPaid": { "type": "number" },
+        "maxPayout": { "type": "number" },
+        "coverageStart": { "type": "string", "format": "date-time" },
+        "coverageEnd": { "type": "string", "format": "date-time" },
+        "risks": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["userId", "status", "premiumPaid"]
+    },
+    "Claim": {
+      "title": "Insurance Claim",
+      "description": "Represents a payout claim triggered by weather events.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "policyId": { "type": "string" },
+        "event": { "type": "string" },
+        "payoutAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["initiated", "completed", "failed"] },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "razorpayTransferId": { "type": "string" }
+      },
+      "required": ["userId", "policyId", "payoutAmount", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile document."
+    },
+    "/users/{userId}/policies/{policyId}": {
+      "schema": "Policy",
+      "description": "User's insurance policies."
+    },
+    "/users/{userId}/claims/{claimId}": {
+      "schema": "Claim",
+      "description": "User's insurance claims."
+    }
+  }
+}

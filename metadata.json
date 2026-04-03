@@ -1,0 +1,5 @@
+{
+  "name": "GigShield",
+  "description": "AI-powered parametric micro-insurance for gig workers, providing instant wage replacement during extreme weather or pollution events.",
+  "requestFramePermissions": ["geolocation"]
+}
